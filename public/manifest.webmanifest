@@ -1,0 +1,9 @@
+{
+  "name": "Książka Korespondencji",
+  "short_name": "Korespondencja",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f1e6",
+  "theme_color": "#26313f",
+  "icons": []
+}
