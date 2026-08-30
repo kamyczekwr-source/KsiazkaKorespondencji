@@ -7,5 +7,5 @@ import react from "@vitejs/plugin-react";
 // strona wyląduje pod: https://<twoj-login>.github.io/ksiazka-korespondencji/
 export default defineConfig({
   plugins: [react()],
-  base: "/ksiazka-korespondencji/",
+  base: "/KsiazkaKorespondencji/",
 });
