@@ -42,3 +42,19 @@ button {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* Druk: pokazujemy tylko tabelę .print-only, resztę interfejsu ukrywamy. */
+.print-only { display: none; }
+
+@media print {
+  body * { visibility: hidden; }
+  .print-only, .print-only * { visibility: visible; }
+  .print-only {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 1rem;
+  }
+  .no-print { display: none !important; }
+}
