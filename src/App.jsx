@@ -198,7 +198,7 @@ function UploadModal({ direction, fields, onSave, onClose }) {
       const prompt = `Jesteś asystentem biurowym. Na obrazie/dokumencie znajduje się pismo urzędowe lub e-mail. Wyciągnij z niego dane do rejestru korespondencji ${direction === "incoming" ? "PRZYCHODZĄCEJ" : "WYCHODZĄCEJ"} i zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) z dokładnie tymi kluczami:\n${fieldList}\n\nZasady:\n- Daty w formacie DD.MM.RRRR jeśli widoczne, inaczej pusty string.\n- Jeśli pola nie da się ustalić z dokumentu, zostaw pusty string "".\n- Nie zmyślaj danych, których nie widać w dokumencie.\n- Zwróć czysty JSON, nic więcej.`;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
