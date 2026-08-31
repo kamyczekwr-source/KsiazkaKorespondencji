@@ -50,6 +50,7 @@ button {
   body * { visibility: hidden; }
   .print-only, .print-only * { visibility: visible; }
   .print-only {
+    display: block !important;
     position: absolute;
     top: 0;
     left: 0;
