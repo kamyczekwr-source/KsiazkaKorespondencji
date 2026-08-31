@@ -12,6 +12,7 @@ import {
   Save,
   AlertCircle,
   BookOpenText,
+  Printer,
 } from "lucide-react";
 import { db } from "./firebase.js";
 import {
@@ -73,6 +74,17 @@ function emptyEntry(fields) {
 // Nazwa kolekcji Firestore dla danego miesiąca/roku/kierunku.
 function collectionName(year, month, direction) {
   return `korespondencja_${year}_${String(month).padStart(2, "0")}_${direction}`;
+}
+
+// Parsuje datę w formacie DD.MM.RRRR (albo RRRR-MM-DD z <input type="date">)
+// na wartość sortowalną. Wpisy bez daty lądują na końcu.
+function dateSortValue(str) {
+  if (!str) return Infinity;
+  const dm = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dm) return new Date(`${dm[3]}-${dm[2]}-${dm[1]}`).getTime();
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return new Date(str).getTime();
+  return Infinity;
 }
 
 function fileToBase64(file) {
@@ -195,7 +207,7 @@ function UploadModal({ direction, fields, onSave, onClose }) {
       const base64 = await fileToBase64(f);
       const mimeType = f.type || "image/jpeg";
 
-      const prompt = `Jesteś asystentem biurowym. Na obrazie/dokumencie znajduje się pismo urzędowe lub e-mail. Wyciągnij z niego dane do rejestru korespondencji ${direction === "incoming" ? "PRZYCHODZĄCEJ" : "WYCHODZĄCEJ"} i zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) z dokładnie tymi kluczami:\n${fieldList}\n\nZasady:\n- Daty w formacie DD.MM.RRRR jeśli widoczne, inaczej pusty string.\n- Jeśli pola nie da się ustalić z dokumentu, zostaw pusty string "".\n- Nie zmyślaj danych, których nie widać w dokumencie.\n- Zwróć czysty JSON, nic więcej.`;
+      const prompt = `Jesteś asystentem biurowym. Na obrazie/dokumencie znajduje się pismo urzędowe lub e-mail. Wyciągnij z niego dane do rejestru korespondencji ${direction === "incoming" ? "PRZYCHODZĄCEJ" : "WYCHODZĄCEJ"} i zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) z dokładnie tymi kluczami:\n${fieldList}\n\nZasady ogólne:\n- Daty w formacie DD.MM.RRRR jeśli widoczne, inaczej pusty string.\n- Jeśli pola nie da się ustalić z dokumentu, zostaw pusty string "".\n- Nie zmyślaj danych, których nie widać w dokumencie.\n- Zwróć czysty JSON, nic więcej.\n\nWażne szczegóły co do konkretnych pól:\n- Pole "nr" (znak pisma) to numer/znak referencyjny NADANY PRZEZ NADAWCĘ dokumentu, widoczny na samym piśmie (zwykle w nagłówku, obok daty). Wygląda np. tak: "ZAiWC.53.1.2026", "WRR-I.68.3.2026", "BZP.271.1.373.2026.AK" - litery, kropki, myślniki i cyfry. To NIE jest numer porządkowy dopisany ręcznie przez osobę przyjmującą pismo (taki jak samo "12" czy "23") - jeśli na dokumencie widzisz tylko taki prosty numer porządkowy bez znaku nadawcy, zostaw pole puste.\n- Pole "tresc" ma zawierać rzeczowe, zwięzłe streszczenie (maks. 1-2 zdania, ok. 15-25 słów) TEGO, CZEGO DOTYCZY pismo - opisz sprawę/temat na podstawie treści dokumentu, a nie sam typ pisma jednym słowem. Zamiast np. samego "Polecenie" napisz np. "Polecenie aktualizacji harmonogramu dostaw materiałów na III kwartał".`;
 
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
@@ -337,6 +349,11 @@ export default function App() {
   const [saveError, setSaveError] = useState("");
 
   const fields = direction === "incoming" ? INCOMING_FIELDS : OUTGOING_FIELDS;
+  const dateKey = direction === "incoming" ? "dataOtrzymania" : "dataWyslania";
+
+  const sortedEntries = [...entries].sort(
+    (a, b) => dateSortValue(a[dateKey]) - dateSortValue(b[dateKey])
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -408,12 +425,20 @@ export default function App() {
         </div>
       </div>
 
-      <div className="flex" style={{ borderBottom: `1px solid ${RULE}` }}>
+      <div className="flex items-center no-print" style={{ borderBottom: `1px solid ${RULE}` }}>
         <TabButton active={direction === "incoming"} onClick={() => setDirection("incoming")} icon={<Inbox size={15} />} label="Przychodząca" />
         <TabButton active={direction === "outgoing"} onClick={() => setDirection("outgoing")} icon={<SendHorizontal size={15} />} label="Wychodząca" />
+        <button
+          onClick={() => window.print()}
+          aria-label="Drukuj miesięczne zestawienie"
+          title="Drukuj miesięczne zestawienie"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "0 0.9rem", color: INK_SOFT, flexShrink: 0 }}
+        >
+          <Printer size={17} />
+        </button>
       </div>
 
-      <div style={{ padding: "1rem 1rem 6rem" }}>
+      <div className="no-print" style={{ padding: "1rem 1rem 6rem" }}>
         {saveError && (
           <div className="flex items-center gap-2 mb-3" style={{ color: WAX_DARK, fontSize: "0.8rem" }}>
             <AlertCircle size={15} /> {saveError}
@@ -430,14 +455,24 @@ export default function App() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {entries.map((entry) => (
-              <EntryCard key={entry.id} entry={entry} fields={fields} onEdit={() => setModal({ edit: entry })} onDelete={() => deleteEntry(entry.id)} />
+            {sortedEntries.map((entry, i) => (
+              <EntryCard key={entry.id} lp={i + 1} entry={entry} fields={fields} onEdit={() => setModal({ edit: entry })} onDelete={() => deleteEntry(entry.id)} />
             ))}
           </div>
         )}
       </div>
 
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: PAPER, borderTop: `1px solid ${RULE}`, padding: "0.75rem 1rem", display: "flex", gap: "0.6rem" }}>
+      {!loading && entries.length > 0 && (
+        <PrintTable
+          entries={sortedEntries}
+          fields={fields}
+          direction={direction}
+          month={month}
+          year={year}
+        />
+      )}
+
+      <div className="no-print" style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: PAPER, borderTop: `1px solid ${RULE}`, padding: "0.75rem 1rem", display: "flex", gap: "0.6rem" }}>
         <button onClick={() => setModal("upload")} className="flex items-center justify-center gap-2" style={{ ...actionBtnStyle, background: "#fffdf8", color: INK, border: `1px solid ${RULE}` }}>
           <Upload size={16} /> Ze zdjęcia
         </button>
@@ -490,7 +525,7 @@ function TabButton({ active, onClick, icon, label }) {
   );
 }
 
-function EntryCard({ entry, fields, onEdit, onDelete }) {
+function EntryCard({ entry, fields, lp, onEdit, onDelete }) {
   const primary = fields[0];
   const secondary = fields.find((f) => f.key.toLowerCase().includes("kogo")) || fields[1];
   const content = fields.find((f) => f.key === "tresc");
@@ -500,7 +535,7 @@ function EntryCard({ entry, fields, onEdit, onDelete }) {
       <div className="flex items-start justify-between gap-2">
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: "0.78rem", color: INK_SOFT, fontFamily: "ui-monospace, monospace" }}>
-            {entry[primary.key] || "—"} {secondary ? `· ${entry[secondary.key] || "—"}` : ""}
+            <span style={{ color: WAX, fontWeight: 700 }}>{lp}.</span> {entry[primary.key] || "—"} {secondary ? `· ${entry[secondary.key] || "—"}` : ""}
           </div>
           {content && (
             <div style={{ fontSize: "0.85rem", color: INK, marginTop: "0.25rem", overflowWrap: "break-word" }}>
@@ -526,3 +561,39 @@ function EntryCard({ entry, fields, onEdit, onDelete }) {
 }
 
 const iconBtnStyle = { background: "none", border: "none", cursor: "pointer", padding: 4 };
+
+/* ---------------------------------------------------------------
+   Tabela do druku — widoczna tylko przy drukowaniu (patrz index.css),
+   układ zbliżony do papierowej książki korespondencyjnej.
+----------------------------------------------------------------*/
+function PrintTable({ entries, fields, direction, month, year }) {
+  const title = `Korespondencja ${direction === "incoming" ? "Przychodząca" : "Wychodząca"} — ${MONTHS[month - 1]} ${year}`;
+  return (
+    <div className="print-only">
+      <h2 style={{ fontFamily: "Georgia, serif", fontSize: "1rem", marginBottom: "0.75rem" }}>{title}</h2>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.7rem" }}>
+        <thead>
+          <tr>
+            <th style={printTh}>Lp.</th>
+            {fields.map((f) => (
+              <th key={f.key} style={printTh}>{f.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry, i) => (
+            <tr key={entry.id}>
+              <td style={printTd}>{i + 1}</td>
+              {fields.map((f) => (
+                <td key={f.key} style={printTd}>{entry[f.key] || ""}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const printTh = { border: "1px solid #333", padding: "4px 6px", textAlign: "left", background: "#eee" };
+const printTd = { border: "1px solid #333", padding: "4px 6px", textAlign: "left", verticalAlign: "top" };
