@@ -204,10 +204,28 @@ function UploadModal({ direction, fields, onSave, onClose }) {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey) throw new Error("Brak klucza VITE_GEMINI_API_KEY w konfiguracji.");
-      const base64 = await fileToBase64(f);
-      const mimeType = f.type || "image/jpeg";
+
+      const isDocx =
+        f.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        f.name?.toLowerCase().endsWith(".docx");
 
       const prompt = `Jesteś asystentem biurowym. Na obrazie/dokumencie znajduje się pismo urzędowe lub e-mail. Wyciągnij z niego dane do rejestru korespondencji ${direction === "incoming" ? "PRZYCHODZĄCEJ" : "WYCHODZĄCEJ"} i zwróć WYŁĄCZNIE obiekt JSON (bez markdown, bez komentarzy) z dokładnie tymi kluczami:\n${fieldList}\n\nZasady ogólne:\n- Daty w formacie DD.MM.RRRR jeśli widoczne, inaczej pusty string.\n- Jeśli pola nie da się ustalić z dokumentu, zostaw pusty string "".\n- Nie zmyślaj danych, których nie widać w dokumencie.\n- Zwróć czysty JSON, nic więcej.\n\nWażne szczegóły co do konkretnych pól:\n- Pole "nr" (znak pisma) to numer/znak referencyjny NADANY PRZEZ NADAWCĘ dokumentu, widoczny na samym piśmie (zwykle w nagłówku, obok daty). Wygląda np. tak: "ZAiWC.53.1.2026", "WRR-I.68.3.2026", "BZP.271.1.373.2026.AK" - litery, kropki, myślniki i cyfry. To NIE jest numer porządkowy dopisany ręcznie przez osobę przyjmującą pismo (taki jak samo "12" czy "23") - jeśli na dokumencie widzisz tylko taki prosty numer porządkowy bez znaku nadawcy, zostaw pole puste.\n- Pole "tresc" ma zawierać rzeczowe, zwięzłe streszczenie (maks. 1-2 zdania, ok. 15-25 słów) TEGO, CZEGO DOTYCZY pismo - opisz sprawę/temat na podstawie treści dokumentu, a nie sam typ pisma jednym słowem. Zamiast np. samego "Polecenie" napisz np. "Polecenie aktualizacji harmonogramu dostaw materiałów na III kwartał".`;
+
+      let parts;
+      if (isDocx) {
+        const mammoth = (await import("mammoth")).default;
+        const arrayBuffer = await f.arrayBuffer();
+        const { value: docText } = await mammoth.extractRawText({ arrayBuffer });
+        if (!docText.trim()) throw new Error("Nie udało się odczytać tekstu z pliku .docx (dokument może być pusty lub zeskanowany jako obraz).");
+        parts = [{ text: `${prompt}\n\nTreść dokumentu (wyodrębniona z pliku .docx):\n${docText}` }];
+      } else {
+        const base64 = await fileToBase64(f);
+        const mimeType = f.type || "image/jpeg";
+        parts = [
+          { inline_data: { mime_type: mimeType, data: base64 } },
+          { text: prompt },
+        ];
+      }
 
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
@@ -215,14 +233,7 @@ function UploadModal({ direction, fields, onSave, onClose }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { inline_data: { mime_type: mimeType, data: base64 } },
-                  { text: prompt },
-                ],
-              },
-            ],
+            contents: [{ parts }],
           }),
         }
       );
@@ -268,13 +279,13 @@ function UploadModal({ direction, fields, onSave, onClose }) {
             style={{ width: "100%", border: `2px dashed ${RULE}`, borderRadius: 10, padding: "2.25rem 1rem", background: "#fffdf8", cursor: "pointer" }}
           >
             <Upload size={28} color={INK_SOFT} />
-            <span style={{ color: INK_SOFT, fontSize: "0.85rem" }}>Wybierz zdjęcie lub skan pisma</span>
+            <span style={{ color: INK_SOFT, fontSize: "0.85rem" }}>Wybierz zdjęcie, skan (PDF) lub plik Word (.docx)</span>
           </button>
         )}
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="hidden"
           onChange={(e) => handleFile(e.target.files?.[0])}
         />
